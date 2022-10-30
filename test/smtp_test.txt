@@ -1,0 +1,23 @@
+Content-Type: multipart/mixed; boundary="===============7858138664676714438=="
+MIME-Version: 1.0
+Subject: Greetings
+From: xyz@gmail.com
+To: abc@gmail.com
+
+--===============7858138664676714438==
+Content-Type: text/plain; charset="us-ascii"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+
+Hello, how are you? I am fine.
+This is a rather nice letter, don't you think?
+--===============7858138664676714438==
+Content-Type: application/txt
+MIME-Version: 1.0
+Content-Transfer-Encoding: base64
+Content-Disposition: attachment; filename="test.txt"
+
+Q291Y291LCBqZSBzdWlzIHVuZSBwacOoY2Ugam9pbnRl
+
+--===============7858138664676714438==--
+.
