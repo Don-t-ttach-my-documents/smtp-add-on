@@ -18,7 +18,11 @@ def sendFileServer(fileInfo, sender):
     #Repasser en binaire ? Laisser en base 64 ?
     #Dépend de comment on récupère/traitre le fichier après coup
     files = {"file":fileInfo["content"]}
-    link = requests.post(URL_TO_SERVER+"upload", data={"email":sender},files=files)
+    try: 
+        link = requests.post(URL_TO_SERVER+"upload", data={"email":sender},files=files)
+    except requests.exceptions.ConnectionError as e:
+        print(e)
+        return
     if(link.status_code==200):
         fileInfo["type"]="application/txt"
         fileInfo["filename"]=fileInfo["filename"].split(".")[0]+"_link.txt"
