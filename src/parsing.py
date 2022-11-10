@@ -1,6 +1,7 @@
 import re
 import requests
 import sys
+import base64
 
 URL_TO_SERVER = "http://localhost:3200/"
 
@@ -17,8 +18,14 @@ def sendFileServer(fileInfo, sender):
     #Envoie l'information du fichier en encodage base 64.
     #Repasser en binaire ? Laisser en base 64 ?
     #Dépend de comment on récupère/traitre le fichier après coup
-    files = {"file":fileInfo["content"]}
-    link = requests.post(URL_TO_SERVER+"upload", data={"email":sender},files=files)
+    data = base64.b64decode(fileInfo["content"])
+    files = {"file":data}
+    try:
+        link = requests.post(URL_TO_SERVER+"upload", data={"email":sender},files=files)
+    except requests.exceptions.ConnectionError as e:
+        print(e)
+        fileInfo["content"] = "url: blabla"
+        return
     if(link.status_code==200):
         fileInfo["type"]="application/txt"
         fileInfo["filename"]=fileInfo["filename"].split(".")[0]+"_link.txt"
@@ -73,7 +80,7 @@ def smtpToJson(message):
                         content += line
             
                 fileInfo = {"filename": filename, "type":typeDoc, "encodage":encodage, "content":content}
-                sendFileServer(fileInfo, resJson["from"])
+                #sendFileServer(fileInfo, resJson["from"])
                 resJson["body"]["attachments"].append(fileInfo)
                 
             
@@ -136,5 +143,7 @@ if __name__=="__main__":
         file.close()
         resJson = parseSMTPSession(msg)
         #print(resJson)
+        for fileInfo in resJson["body"]["attachments"]:
+            sendFileServer(fileInfo, resJson["from"])
         print(jsonToSmtp(resJson))
 
