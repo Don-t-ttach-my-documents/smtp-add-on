@@ -2,6 +2,7 @@ import re
 import requests
 import sys
 import base64
+from werkzeug.datastructures import FileStorage
 
 URL_TO_SERVER = "http://localhost:3200/"
 
@@ -19,7 +20,7 @@ def sendFileServer(fileInfo, sender):
     #Repasser en binaire ? Laisser en base 64 ?
     #Dépend de comment on récupère/traitre le fichier après coup
     data = base64.b64decode(fileInfo["content"])
-    files = {"file":data}
+    files = {"file":(fileInfo["filename"], data, fileInfo["type"])}
     try:
         link = requests.post(URL_TO_SERVER+"upload", data={"email":sender},files=files)
     except requests.exceptions.ConnectionError as e:
