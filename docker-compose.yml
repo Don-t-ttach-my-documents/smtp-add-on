@@ -1,0 +1,7 @@
+version: "3"
+
+services:
+  parsing:
+    build: .
+    ports:
+      - "3201:3201"

@@ -2,7 +2,7 @@ import re
 import requests
 import sys
 import base64
-from werkzeug.datastructures import FileStorage
+#from werkzeug.datastructures import FileStorage
 
 URL_TO_SERVER = "http://localhost:3200/"
 
@@ -26,6 +26,7 @@ def sendFileServer(fileInfo, sender):
     except requests.exceptions.ConnectionError as e:
         print(e)
         fileInfo["content"] = "url: blabla"
+        print(fileInfo)
         return
     if(link.status_code==200):
         fileInfo["type"]="application/txt"
@@ -133,9 +134,6 @@ def jsonToSmtp(json):
     msg += "\n\n--"+json["boundary"]+"--\n.\n"
     return msg
 
-##TODO
-#Reconstruire le mail
-##
 
 if __name__=="__main__":
     if len(sys.argv)!=2: exit(0)
