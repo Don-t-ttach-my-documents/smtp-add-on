@@ -1,148 +1,81 @@
-import re
-import requests
+import email
 import sys
 import base64
-#from werkzeug.datastructures import FileStorage
+import requests
 
-URL_TO_SERVER = "http://localhost:3200/"
-
-def findBoundary(message):
-    lines = message.split("\n")
-    boundaryRe = re.compile('.*boundary="(.*)"')
-
-    for line in lines:
-        
-        if boundaryRe.match(line) != None:
-            return boundaryRe.match(line).group(1)
+URL_TO_FILE_SERVER = "http://localhost:3200"
 
 def sendFileServer(fileInfo, sender):
-    #Envoie l'information du fichier en encodage base 64.
-    #Repasser en binaire ? Laisser en base 64 ?
-    #Dépend de comment on récupère/traitre le fichier après coup
+
     data = base64.b64decode(fileInfo["content"])
     files = {"file":(fileInfo["filename"], data, fileInfo["type"])}
     try:
-        link = requests.post(URL_TO_SERVER+"upload", data={"email":sender},files=files)
+        link = requests.post(URL_TO_FILE_SERVER+"/upload", data={"email":sender.strip()},files=files)
     except requests.exceptions.ConnectionError as e:
+        #####TO DEBUG#######
+        #Supprimer ce code au déploiement
         print(e)
-        fileInfo["content"] = "url: blabla"
-        print(fileInfo)
+        fileInfo["filename"] = fileInfo["filename"].split(".")[0]+"_link.txt"
+        fileInfo["content"] = base64.b64encode("url: failed to connect".encode('utf-8'))
+        ###################
         return
     if(link.status_code==200):
         fileInfo["type"]="application/txt"
         fileInfo["filename"]=fileInfo["filename"].split(".")[0]+"_link.txt"
-        fileInfo["content"] = URL_TO_SERVER+link.json()[0]
+        fileInfo["content"] = str(base64.b64encode(((URL_TO_FILE_SERVER+link.json()[0])).encode('utf-8')).decode('utf-8')) + "\n"
     else:
         print(link.json())
         exit(-1)
 
+def parseMIMEFiles(mimeMessage):
+    mime = getMIMEFromstring(mimeMessage)
+    if not isMimeMessage(mime): return mime.as_string()
 
-def smtpToJson(message):
-    resJson = {}
-    resJson["boundary"] = findBoundary(message)
-    resJson["subject"]= ""
-    resJson["from"]=""
-    resJson["to"]=""
-    resJson["body"] = {}
-    resJson["body"]["body"] = ""
-    resJson["body"]["attachments"]= []
+    sender = mime.get('From', "failed@mail.com")
+    parts = mime.get_payload()
+    for part in parts:
+        if None== part.get('Content-disposition') or "attachment" not in part.get('Content-disposition'):
+            continue
 
-    part = message.split("--"+resJson["boundary"])
+        fileInfo = {}
+        fileInfo["filename"] = part.get_filename()
+        fileInfo["content"] = part.get_payload()
+        fileInfo["type"] = part.get_content_type()
 
-    subjectRe = re.compile("Subject: (.*)")
-    fromRe = re.compile("From: (.*)")
-    toRe = re.compile("To: (.*)")
-    for line in part[0].split("\n"):
-        if subjectRe.match(line) != None: resJson["subject"] = subjectRe.match(line).group(1)
-        elif fromRe.match(line) != None: resJson["from"]= fromRe.match(line).group(1)
-        elif toRe.match(line) !=None: resJson["to"]=toRe.match(line).group(1)
-    
-    typeMessageRe = re.compile('Content-Type: (.*);?')
-    filenameRe = re.compile('.*filename="(.*)"')
-    encodageRe = re.compile('Content-Transfer-Encoding: (.*)')
+        sendFileServer(fileInfo, sender)
+        part.replace_header('Content-disposition', "attachment; filename=\""+fileInfo["filename"]+'"')
+        part.replace_header('Content-type', "text/plain; charset=UTF-8; name=\""+fileInfo["filename"]+'"')
+        part.set_payload(fileInfo["content"])
+    return mime.as_string()
 
-    for p in part[1:]:
-        lines = p.split("\n")
+def isMimeMessage(mimeMessage):
+    return mimeMessage.is_multipart()
 
-        if "attachment" in p:
-                filename = ""
-                typeDoc = ""
-                content = ""
-                encodage = ""
-                for line in lines:
-                    if typeMessageRe.match(line)!=None:
-                        typeDoc = typeMessageRe.match(line).group(1)
-                    elif filenameRe.match(line) !=None:
-                        filename = filenameRe.match(line).group(1)
-                    elif encodageRe.match(line)!=None:
-                        encodage = encodageRe.match(line).group(1)
-                    elif "MIME-Version:" in line:
-                        pass
-                    else:
-                        content += line
-            
-                fileInfo = {"filename": filename, "type":typeDoc, "encodage":encodage, "content":content}
-                #sendFileServer(fileInfo, resJson["from"])
-                resJson["body"]["attachments"].append(fileInfo)
-                
-            
-        elif "text" in p:
-            filename = ""
-            typeDoc = ""
-            content = ""
-            encodage = ""
-            for line in lines:
-                if typeMessageRe.match(line)!=None:
-                    typeDoc = typeMessageRe.match(line).group(1)
-                elif filenameRe.match(line) !=None:
-                    filename = filenameRe.match(line).group(1)
-                elif encodageRe.match(line)!=None:
-                    encodage = encodageRe.match(line).group(1)
-                elif "MIME-Version:" in line:
-                    pass
-                elif len(line)!=0:
-                    content += "\n"+line
-            
-            fileInfo = {"type":typeDoc, "encodage":encodage, "content":content}
-            resJson["body"]["body"] = fileInfo
+def getMIMEFromstring(message):
+    return email.message_from_string(message)
 
+def getBoundaryWithoutHeader(message):
+    return message.split("\n")[1][2:]
 
+#Voir exemple postfix_message_raw (exemple de ce qui est reçu par le filtre)
+def formatBodyWithoutHeader(message, sender):
+    boundary = getBoundaryWithoutHeader(message)
+    newMessage = "Content-Type: multipart/mixed; boundary="+boundary+"\n"
+    newMessage += "From: "+sender+"\n"+message
+    return newMessage
 
-    return resJson
+#enleve les headers ajoutés pour le parsing du message
+def deformatHeaders(message):
+    return "\n".join(message.split("\n")[2:])
 
-def parseSMTPSession(session):
-    message  = session.split("End message with period")[1].split("\n.\n")[0]
-    return smtpToJson(message)
-
-def jsonToSmtp(json):
-    msg = "Content-Type: multipart/mixed; boundary=\""+json["boundary"]+"\"\nMIME-Version: 1.0\n"
-    msg += "Subject: "+json["subject"]
-    msg += "\nFrom: "+json["from"]+"\nTo: "+json["to"]
-    msg += "\n\n--"+json["boundary"]
-
-    msg +="\nContent-Type: "+json["body"]["body"]["type"]
-    msg +="\nMIME-Version: 1.0\nContent-Transfer-Encoding: "+json["body"]["body"]["encodage"]
-    msg += "\n"+json["body"]["body"]["content"]
-    
-    for attach in json["body"]["attachments"]:
-        msg += "\n--"+json["boundary"]
-        msg += "\nContent-Type: "+ attach["type"]
-        msg += "\nMIME-Version: 1.0\nContent-Transfer-Encoding: "+attach["encodage"]
-        msg += "\nContent-Disposition: attachment; filename=\""+attach["filename"]+"\""
-        msg += "\n\n"+attach["content"]
-
-    msg += "\n\n--"+json["boundary"]+"--\n.\n"
-    return msg
-
-
+#Tester le parsing avec un fichier
 if __name__=="__main__":
-    if len(sys.argv)!=2: exit(0)
+    if len(sys.argv)!=2:
+        print("Please provide the path to the file to test in parameters")
+        exit(0)
     with open(sys.argv[1], 'r') as file:
         msg = file.read()
         file.close()
-        resJson = parseSMTPSession(msg)
-        #print(resJson)
-        for fileInfo in resJson["body"]["attachments"]:
-            sendFileServer(fileInfo, resJson["from"])
-        print(jsonToSmtp(resJson))
+    msg = formatBodyWithoutHeader(msg, "test2@mail.fr")
+    print(deformatHeaders(parseMIMEFiles(msg)))
 
