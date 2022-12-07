@@ -4,3 +4,5 @@ README.md
 .git/*
 .gitignore
 test/*
+env/*
+__pycache__/
